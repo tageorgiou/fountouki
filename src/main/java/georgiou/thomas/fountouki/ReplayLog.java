@@ -34,6 +34,10 @@ import java.util.concurrent.TimeUnit;
  * Created by tgeorgiou on 7/22/14.
  */
 public class ReplayLog {
+    private static final int NUM_CONNECTIONS = 5;
+    private static final int REQUEST_PER_SECOND=1;
+    private static final int TIME_GRANULARITY = 1000; // 1 second
+
     public static void main(String[] args) {
         try {
             ReplayLog replayLog = new ReplayLog();
@@ -54,10 +58,26 @@ public class ReplayLog {
             System.exit(1);
         }
 
-        Connection connection = new Connection(HostAndPort.fromParts("localhost", 8899));
+        HostAndPort host = HostAndPort.fromParts("localhost", 8899);
+        Connection[] connections = new Connection[NUM_CONNECTIONS];
+        for (int i = 0; i < NUM_CONNECTIONS; i++) {
+            connections[i] = new Connection(host);
+        }
+        int counter = 0;
+        long bucketStartTime = System.currentTimeMillis();
+        int requestsInBucket = 0;
         while (requestReader.hasNext()) {
+            if (requestsInBucket > REQUEST_PER_SECOND * TIME_GRANULARITY / 1000) {
+                Thread.sleep(Math.max(bucketStartTime + TIME_GRANULARITY - System.currentTimeMillis(), 0));
+            }
+            if (System.currentTimeMillis() - bucketStartTime >= TIME_GRANULARITY) {
+                bucketStartTime = System.currentTimeMillis();
+                requestsInBucket = 0;
+            }
+            Connection connection = connections[counter % NUM_CONNECTIONS];
             LogEntry logEntry = requestReader.readLogEntry();
             connection.callMethod(logEntry);
+            requestsInBucket++;
         }
     }
 
