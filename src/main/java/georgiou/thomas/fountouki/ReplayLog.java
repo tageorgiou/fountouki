@@ -13,14 +13,18 @@ import com.google.common.net.HostAndPort;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.Duration;
 import org.apache.thrift.TException;
+import org.apache.thrift.protocol.TCompactProtocol;
 import org.apache.thrift.protocol.TMessage;
 import org.apache.thrift.protocol.TMessageType;
 import org.apache.thrift.protocol.TProtocol;
 import org.apache.thrift.protocol.TStruct;
+import org.apache.thrift.protocol.TType;
+import org.apache.thrift.transport.TMemoryInputTransport;
 import org.apache.thrift.transport.TTransport;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.concurrent.ExecutionException;
@@ -33,7 +37,7 @@ public class ReplayLog {
     public static void main(String[] args) {
         try {
             ReplayLog replayLog = new ReplayLog();
-            replayLog.replayLog("requests2.log");
+            replayLog.replayLog("requests.log");
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);
@@ -63,7 +67,7 @@ public class ReplayLog {
         TProtocol outputProtocol;
         TProtocol inputProtocol;
         NiftyClientChannel niftyClientChannel;
-        int seqId = 0;
+        int seqId = 1;
 
         public Connection(HostAndPort hostAndPort) throws ExecutionException, InterruptedException {
             FramedClientConnector connector = new FramedClientConnector(hostAndPort);
@@ -72,7 +76,7 @@ public class ReplayLog {
                     connector,
                     new Duration(200, TimeUnit.MILLISECONDS), // connect timeout
                     new Duration(4000, TimeUnit.MILLISECONDS), // receive timeout
-                    new Duration(200, TimeUnit.MILLISECONDS), // read timeout
+                    new Duration(400, TimeUnit.MILLISECONDS), // read timeout
                     new Duration(200, TimeUnit.MILLISECONDS), // write timeout
                     ThriftClientConfig.DEFAULT_MAX_FRAME_SIZE,
                     niftyClient.getDefaultSocksProxyAddress());
@@ -82,17 +86,18 @@ public class ReplayLog {
             TTransportPair transportPair = TTransportPair.fromSeparateTransports(inputTransport, outputTransport);
             TProtocolPair protocolPair = niftyClientChannel.getProtocolFactory().getProtocolPair(transportPair);
             inputProtocol = protocolPair.getInputProtocol();
+            System.out.println(inputProtocol.getClass().toString());
             outputProtocol = protocolPair.getOutputProtocol();
+            System.out.println(outputProtocol.getClass().toString());
         }
 
         public void callMethod(LogEntry logEntry) throws TException, InterruptedException {
             outputTransport.resetOutputBuffer();
-            outputProtocol.writeMessageBegin(new TMessage(logEntry.methodName, TMessageType.ONEWAY, seqId++));
-            // read request object out
-            outputProtocol.writeStructBegin(new TStruct());
-            outputProtocol.writeFieldStop();
-            outputProtocol.writeStructEnd();
-
+            outputProtocol.writeMessageBegin(new TMessage(logEntry.methodName, TMessageType.CALL, seqId++));
+            // System.out.println("Request length: " + logEntry.request.length + " bytes");
+            TMemoryInputTransport in = new TMemoryInputTransport(logEntry.request);
+            TCompactProtocol iprot = new TCompactProtocol(in);
+            TProtocolCopier.copy(iprot, outputProtocol, TType.STRUCT);
             outputProtocol.writeMessageEnd();
             outputProtocol.getTransport().flush();
 
@@ -100,12 +105,12 @@ public class ReplayLog {
             niftyClientChannel.sendAsynchronousRequest(requestBuffer, false, new RequestChannel.Listener() {
                 @Override
                 public void onRequestSent() {
-                    System.out.println("Request sent");
+                    //System.out.println("Request sent");
                 }
 
                 @Override
                 public void onResponseReceived(ChannelBuffer channelBuffer) {
-                    System.out.println("Response received");
+                    //System.out.println("Response received");
                 }
 
                 @Override
@@ -114,7 +119,7 @@ public class ReplayLog {
                     System.out.println("Channel Error");
                 }
             });
-            Thread.sleep(1000);
+            Thread.sleep(10);
         }
     }
 }

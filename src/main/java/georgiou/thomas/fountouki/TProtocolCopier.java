@@ -3,6 +3,8 @@ package georgiou.thomas.fountouki;
 import org.apache.thrift.TException;
 import org.apache.thrift.protocol.*;
 
+import java.nio.ByteBuffer;
+
 /**
  * Created by tgeorgiou on 7/21/14.
  */
@@ -41,10 +43,12 @@ public class TProtocolCopier {
                 out.writeStructBegin(in.readStructBegin());
                 while (true) {
                     TField field = in.readFieldBegin();
-                    out.writeFieldBegin(field);
                     if (field.type == TType.STOP) {
+                        in.readI16(); // HACK to make old files work
+                        out.writeFieldStop();
                         break;
                     }
+                    out.writeFieldBegin(field);
                     copy(in, out, field.type);
                     in.readFieldEnd();
                     out.writeFieldEnd();

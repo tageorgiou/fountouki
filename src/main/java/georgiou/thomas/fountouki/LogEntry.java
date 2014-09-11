@@ -17,7 +17,7 @@ import java.nio.channels.FileChannel;
 public class LogEntry {
     public final long timestamp;
     public final String methodName;
-    private final byte[] request;
+    public final byte[] request;
 
     public LogEntry(long timestamp, String methodName, TProtocol in) throws TException {
         this.timestamp = timestamp;
@@ -36,7 +36,7 @@ public class LogEntry {
         this.timestamp = timestamp;
         this.methodName = methodName;
         ByteBuffer in = request.asReadOnlyBuffer();
-        in.flip();
+        in.rewind();
         byte[] bytes = new byte[in.remaining()];
         in.get(bytes);
         this.request = bytes;
